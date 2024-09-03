@@ -9,9 +9,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:myExtension.scanWorkspace"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {

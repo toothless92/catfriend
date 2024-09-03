@@ -1,30 +1,46 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { promisify } from 'util';
+
+const readdir = promisify(fs.readdir);
 
 export function activate(context: vscode.ExtensionContext) {
+    const outputChannel = vscode.window.createOutputChannel("CatFriend Logs");
+    outputChannel.appendLine("CatFriend extension activated.");
+
     let disposable = vscode.commands.registerCommand('myExtension.scanWorkspace', async () => {
-        // Access the custom setting for the workspace path
+        outputChannel.appendLine("Scan Workspace command invoked.");
         const workspacePath = vscode.workspace.getConfiguration().get<string>('catfriend.workspacePath');
 
         if (!workspacePath || workspacePath.trim() === '') {
             vscode.window.showErrorMessage('Please set the workspace path in the CatFriend extension settings.');
+            outputChannel.appendLine("No workspace path set.");
             return;
         }
 
-        // Show a progress notification
+        outputChannel.appendLine(`Workspace path: ${workspacePath}`);
+
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: "Scanning Workspace for Python Modules",
             cancellable: false
         }, async (progress) => {
             progress.report({ increment: 0, message: "Starting scan..." });
+            outputChannel.appendLine("Starting scan...");
 
-            // Perform the scan
-            await scanFolderForModules(workspacePath, progress);
+            let foundPaths: string[] = [];
 
-            // Final progress update
+            try {
+                foundPaths = await scanFolderForModules(workspacePath, progress, outputChannel);
+                context.workspaceState.update('foundPythonPaths', foundPaths);
+                updatePythonPaths(foundPaths, outputChannel);
+            } catch (error) {
+                handleError(error, outputChannel);
+            }
+
             progress.report({ increment: 100, message: "Scan complete." });
+            outputChannel.appendLine("Scan complete.");
         });
 
         vscode.window.showInformationMessage('Workspace scan complete.');
@@ -33,74 +49,114 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 }
 
-async function scanFolderForModules(folderPath: string, progress: vscode.Progress<{ message?: string; increment?: number }>) {
-    return new Promise<void>((resolve, reject) => {
-        fs.readdir(folderPath, { withFileTypes: true }, (err, files) => {
-            if (err) {
-                vscode.window.showErrorMessage(`Error reading folder: ${err.message}`);
-                reject(err);
-                return;
-            }
+async function scanFolderForModules(folderPath: string, progress: vscode.Progress<{ message?: string; increment?: number }>, outputChannel: vscode.OutputChannel): Promise<string[]> {
+    const foundPaths: string[] = [];
+    outputChannel.appendLine("wahey")
+    try {
+        outputChannel.appendLine(`Scanning folder: ${folderPath}`);
+        const files = await readdir(folderPath, { withFileTypes: true });
+        outputChannel.appendLine(`Found ${files.length} items in folder: ${folderPath}`);
 
-            const totalFiles = files.length;
-            let processedFiles = 0;
+        const totalFiles = files.length;
+        let processedFiles = 0;
 
-            files.forEach(file => {
-                if (file.isDirectory()) {
-                    const fullPath = path.join(folderPath, file.name);
-
-                    if (file.name === 'src') {
-                        handleSrcDirectory(fullPath);
-                    } else {
-                        scanFolderForModules(fullPath, progress);  // Recursively scan subfolders
-                    }
-                } else if (file.name === 'setup.py') {
-                    const srcPath = path.join(folderPath, 'src');
-                    if (fs.existsSync(srcPath)) {
-                        handleSrcDirectory(srcPath);
-                    }
+        for (const file of files) {
+            outputChannel.appendLine(`Processing item: ${file.name}`);
+            if (file.isDirectory()) {
+                // Skip directories starting with "."
+                if (file.name.startsWith(".")) {
+                    outputChannel.appendLine(`Skipping hidden directory: ${file.name}`);
+                    continue;
                 }
 
-                // Update progress
-                processedFiles += 1;
-                const increment = (processedFiles / totalFiles) * 100;
-                progress.report({ increment, message: `Scanning ${file.name}...` });
-            });
+                const fullPath = path.join(folderPath, file.name);
+                outputChannel.appendLine(`Processing directory: ${fullPath}`);
 
-            resolve();
-        });
-    });
+                if (file.name === 'src') {
+                    foundPaths.push(...await handleSrcDirectory(fullPath, outputChannel));
+                } else {
+                    foundPaths.push(...await scanFolderForModules(fullPath, progress, outputChannel));  // Recursively scan subfolders
+                }
+            } else if (file.name === 'setup.py') {
+                const srcPath = path.join(folderPath, 'src');
+                if (fs.existsSync(srcPath)) {
+                    outputChannel.appendLine(`Found setup.py, processing src directory: ${srcPath}`);
+                    foundPaths.push(...await handleSrcDirectory(srcPath, outputChannel));
+                }
+            }
+
+            processedFiles += 1;
+            const increment = (processedFiles / totalFiles) * 100;
+            progress.report({ increment, message: `Scanning ${file.name}...` });
+        }
+    } catch (err) {
+        handleError(err, outputChannel);
+    }
+
+    return foundPaths;
 }
 
-function handleSrcDirectory(srcPath: string) {
-    fs.readdir(srcPath, { withFileTypes: true }, (err, files) => {
-        if (err) {
-            vscode.window.showErrorMessage(`Error reading src directory: ${err.message}`);
-            return;
-        }
+async function handleSrcDirectory(srcPath: string, outputChannel: vscode.OutputChannel): Promise<string[]> {
+    const foundPaths: string[] = [];
+    try {
+        outputChannel.appendLine(`Scanning src directory: ${srcPath}`);
+        const files = await readdir(srcPath, { withFileTypes: true });
 
-        files.forEach(file => {
+        for (const file of files) {
             if (file.isDirectory()) {
                 const modulePath = path.join(srcPath, file.name);
-                addModuleToPythonPath(modulePath);
+                foundPaths.push(modulePath);
+                outputChannel.appendLine(`Found module directory: ${modulePath}`);
+            } else {
+                outputChannel.appendLine(`Found file in src directory: ${file.name}`);
             }
-        });
-    });
+        }
+    } catch (err) {
+        handleError(err, outputChannel);
+    }
+    return foundPaths;
 }
 
-function addModuleToPythonPath(modulePath: string) {
-    const pythonExtension = vscode.extensions.getExtension('ms-python.python');
-    if (pythonExtension) {
-        pythonExtension.activate().then(() => {
-            const pythonSettings = vscode.workspace.getConfiguration('python');
-            const currentPaths = pythonSettings.get<string[]>('analysis.extraPaths') || [];
-            if (!currentPaths.includes(modulePath)) {
-                currentPaths.push(modulePath);
-                pythonSettings.update('analysis.extraPaths', currentPaths, vscode.ConfigurationTarget.Workspace);
-                vscode.window.showInformationMessage(`Added ${modulePath} to Python path.`);
-            }
-        });
+function handleError(err: unknown, outputChannel: vscode.OutputChannel) {
+    if (err instanceof Error) {
+        vscode.window.showErrorMessage(`Error: ${err.message}`);
+        outputChannel.appendLine(`Error: ${err.message}`);
+    } else {
+        vscode.window.showErrorMessage('An unknown error occurred.');
+        outputChannel.appendLine('An unknown error occurred.');
     }
 }
 
-export function deactivate() {}
+async function updatePythonPaths(foundPaths: string[], outputChannel: vscode.OutputChannel) {
+    const pythonExtension = vscode.extensions.getExtension('ms-python.python');
+    if (pythonExtension) {
+        try {
+            await pythonExtension.activate();
+
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                vscode.window.showErrorMessage('No workspace folder is open.');
+                outputChannel.appendLine('No workspace folder is open.');
+                return;
+            }
+
+            const resourceUri = workspaceFolders[0].uri;
+            const pythonSettings = vscode.workspace.getConfiguration('python', resourceUri);
+            const currentPaths = pythonSettings.get<string[]>('analysis.extraPaths') || [];
+
+            const newPaths = [...new Set([...currentPaths, ...foundPaths])];
+
+            outputChannel.appendLine(`Attempting to update Python paths: ${newPaths}`);
+
+            await pythonSettings.update('analysis.extraPaths', newPaths, vscode.ConfigurationTarget.WorkspaceFolder);
+            outputChannel.appendLine('Python paths successfully updated.');
+            vscode.window.showInformationMessage('Python paths updated successfully.');
+        } catch (error) {
+            handleError(error, outputChannel);
+        }
+    } else {
+        outputChannel.appendLine('Python extension is not available.');
+        vscode.window.showErrorMessage('Python extension is not available.');
+    }
+}
