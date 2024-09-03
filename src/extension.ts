@@ -147,9 +147,14 @@ async function updatePythonPaths(foundPaths: string[], outputChannel: vscode.Out
 
             const newPaths = [...new Set([...currentPaths, ...foundPaths])];
 
-            outputChannel.appendLine(`Attempting to update Python paths: ${newPaths}`);
+            // outputChannel.appendLine(`Attempting to update Python paths: ${newPaths}`);
 
             await pythonSettings.update('analysis.extraPaths', newPaths, vscode.ConfigurationTarget.WorkspaceFolder);
+            
+            // Confirm that the settings have been updated
+            const updatedPaths = pythonSettings.get<string[]>('analysis.extraPaths');
+            outputChannel.appendLine(`Updated Python paths in settings: ${updatedPaths}`);
+
             outputChannel.appendLine('Python paths successfully updated.');
             vscode.window.showInformationMessage('Python paths updated successfully.');
         } catch (error) {
