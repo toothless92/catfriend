@@ -2,8 +2,11 @@
   "name": "catfriend",
   "displayName": "CatFriend",
   "description": "Catkin workspace searcher to make yellow import lines go away",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "publisher": "mike-reilly",
+  "icon": "avitar.png",
+  "repository": "https://github.com/toothless92/catfriend",
+  "license": "LICENSE",
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -31,7 +34,7 @@
     "commands": [
       {
         "command": "myExtension.scanWorkspace",
-        "title": "Scan Workspace for Python Modules"
+        "title": "CatFriend: Scan Workspace for Python Modules"
       }
     ]
   },
