@@ -2,7 +2,8 @@
   "name": "catfriend",
   "displayName": "CatFriend",
   "description": "Catkin workspace searcher to make yellow import lines go away",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "publisher": "mike-reilly",
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -15,6 +16,11 @@
       "type": "object",
       "title": "CatFriend Settings",
       "properties": {
+        "catfriend.autoRunOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically run the workspace scan when VS Code starts."
+        },
         "catfriend.workspacePath": {
           "type": "string",
           "default": "",
@@ -47,5 +53,8 @@
     "typescript": "^5.4.5",
     "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.4.0"
-  }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ]
 }

@@ -9,6 +9,18 @@ export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel("CatFriend Logs");
     outputChannel.appendLine("CatFriend extension activated.");
 
+    const autoRunOnStartup = vscode.workspace.getConfiguration().get<boolean>('catfriend.autoRunOnStartup');
+    const workspacePath = vscode.workspace.getConfiguration().get<string>('catfriend.workspacePath');
+
+    if (autoRunOnStartup) {
+        outputChannel.appendLine("Auto-run on startup is enabled.");
+        if (workspacePath && workspacePath.trim() !== '') {
+            vscode.commands.executeCommand('myExtension.scanWorkspace');
+        } else {
+            outputChannel.appendLine("Workspace path is not set. Skipping auto-run.");
+        }
+    }
+
     let disposable = vscode.commands.registerCommand('myExtension.scanWorkspace', async () => {
         outputChannel.appendLine("Scan Workspace command invoked.");
         const workspacePath = vscode.workspace.getConfiguration().get<string>('catfriend.workspacePath');
@@ -34,7 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
             try {
                 foundPaths = await scanFolderForModules(workspacePath, progress, outputChannel);
                 context.workspaceState.update('foundPythonPaths', foundPaths);
-                updatePythonPaths(foundPaths, outputChannel);
+                await updatePythonPaths(foundPaths, outputChannel);
             } catch (error) {
                 handleError(error, outputChannel);
             }
@@ -51,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function scanFolderForModules(folderPath: string, progress: vscode.Progress<{ message?: string; increment?: number }>, outputChannel: vscode.OutputChannel): Promise<string[]> {
     const foundPaths: string[] = [];
-    outputChannel.appendLine("wahey")
+    outputChannel.appendLine("wahey");
     try {
         outputChannel.appendLine(`Scanning folder: ${folderPath}`);
         const files = await readdir(folderPath, { withFileTypes: true });
@@ -73,7 +85,9 @@ async function scanFolderForModules(folderPath: string, progress: vscode.Progres
                 outputChannel.appendLine(`Processing directory: ${fullPath}`);
 
                 if (file.name === 'src') {
-                    foundPaths.push(...await handleSrcDirectory(fullPath, outputChannel));
+                    // Directly add the src directory instead of its subfolders
+                    foundPaths.push(fullPath);
+                    outputChannel.appendLine(`Added src directory: ${fullPath}`);
                 } else {
                     foundPaths.push(...await scanFolderForModules(fullPath, progress, outputChannel));  // Recursively scan subfolders
                 }
@@ -81,7 +95,7 @@ async function scanFolderForModules(folderPath: string, progress: vscode.Progres
                 const srcPath = path.join(folderPath, 'src');
                 if (fs.existsSync(srcPath)) {
                     outputChannel.appendLine(`Found setup.py, processing src directory: ${srcPath}`);
-                    foundPaths.push(...await handleSrcDirectory(srcPath, outputChannel));
+                    foundPaths.push(srcPath); // Add only the src directory
                 }
             }
 
@@ -93,27 +107,6 @@ async function scanFolderForModules(folderPath: string, progress: vscode.Progres
         handleError(err, outputChannel);
     }
 
-    return foundPaths;
-}
-
-async function handleSrcDirectory(srcPath: string, outputChannel: vscode.OutputChannel): Promise<string[]> {
-    const foundPaths: string[] = [];
-    try {
-        outputChannel.appendLine(`Scanning src directory: ${srcPath}`);
-        const files = await readdir(srcPath, { withFileTypes: true });
-
-        for (const file of files) {
-            if (file.isDirectory()) {
-                const modulePath = path.join(srcPath, file.name);
-                foundPaths.push(modulePath);
-                outputChannel.appendLine(`Found module directory: ${modulePath}`);
-            } else {
-                outputChannel.appendLine(`Found file in src directory: ${file.name}`);
-            }
-        }
-    } catch (err) {
-        handleError(err, outputChannel);
-    }
     return foundPaths;
 }
 
@@ -147,7 +140,7 @@ async function updatePythonPaths(foundPaths: string[], outputChannel: vscode.Out
 
             const newPaths = [...new Set([...currentPaths, ...foundPaths])];
 
-            // outputChannel.appendLine(`Attempting to update Python paths: ${newPaths}`);
+            outputChannel.appendLine(`Attempting to update Python paths: ${newPaths}`);
 
             await pythonSettings.update('analysis.extraPaths', newPaths, vscode.ConfigurationTarget.WorkspaceFolder);
             
