@@ -1,5 +1,9 @@
 # CatFriend README
 
+_Catkin workspace searcher for VS Code to make yellow import lines go away_
+
+## Overview
+
 CatFriend is a simple VS Code extension to add Python packages that are normally packaged with ROS Catkin to Pylance's search path.
 
 The extension will walk all the directories in a specified workspace and add any `src` folder to the Python path that is found in a directory also containing a `setup.py` file.
